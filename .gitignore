@@ -1,0 +1,8 @@
+# push/clone temp logs & API scratch (not part of the project)
+_push.log
+_sha.log
+_clone.log
+_body.json
+_repo.json
+_branches.json
+node_modules/

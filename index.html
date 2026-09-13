@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SortForge · 排序锻造炉</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --txt:#e6edf3;
+    --muted:#8b949e; --accent:#58a6ff; --live:#3fb950; --dead:#0d1117;
+    --cmp:#f2cc60; --swp:#f85149;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;}
+  .wrap{max-width:1040px;margin:0 auto;padding:20px;}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:.5px;}
+  h1 .v{color:var(--accent);}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:16px;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  @media(max-width:820px){.layout{grid-template-columns:1fr;}}
+  .stage{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;}
+  canvas{display:block;width:100%;height:auto;background:var(--dead);border:1px solid var(--border);border-radius:4px;}
+  .side{display:flex;flex-direction:column;gap:12px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;}
+  .card h2{font-size:12px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;}
+  button{background:#21262d;color:var(--txt);border:1px solid var(--border);border-radius:6px;
+    padding:7px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
+  button:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent);color:#0d1117;border-color:var(--accent);font-weight:600;}
+  select,input[type=text],input[type=number]{width:100%;background:#0d1117;color:var(--txt);
+    border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12px;font-family:inherit;}
+  label{font-size:11px;color:var(--muted);display:block;margin:8px 0 4px;}
+  .stats{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--border);}
+  .stats:last-child{border-bottom:none;}
+  .stats b{color:var(--accent);}
+  .algo{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .algo button{padding:6px 4px;font-size:11px;}
+  .algo button.on{border-color:var(--live);color:var(--live);}
+  .legend{font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+  .self{font-size:11px;line-height:1.7;}
+  .self .ok{color:var(--live);}
+  .self .bad{color:var(--swp);}
+  .hint{font-size:11px;color:var(--muted);line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SortForge <span class="v">·</span> 排序锻造炉</h1>
+  <div class="sub">6 种排序算法动画 · 确定性种子 · 比较/写入次数实测 — <a href="https://github.com/CJX0712/sort-forge" style="color:var(--accent)">github.com/CJX0712/sort-forge</a></div>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="cv" width="720" height="360"></canvas>
+      <div class="legend">
+        <span><i style="background:#58a6ff"></i>未排序</span>
+        <span><i style="background:#f2cc60"></i>比较中</span>
+        <span><i style="background:#f85149"></i>交换/写入</span>
+        <span><i style="background:#3fb950"></i>已完成</span>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button id="play" class="primary">▶ 播放</button>
+        <button id="step">⏭ 单步</button>
+        <button id="regen">🎲 重新生成</button>
+        <button id="reset" class="warn">重置</button>
+      </div>
+      <label>速度（步/秒）</label>
+      <input id="speed" type="range" min="2" max="200" value="40">
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h2>算法</h2>
+        <div class="algo" id="algos">
+          <button data-a="bubble" class="on">冒泡</button>
+          <button data-a="insertion">插入</button>
+          <button data-a="selection">选择</button>
+          <button data-a="quick">快排</button>
+          <button data-a="merge">归并</button>
+          <button data-a="heap">堆排</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>状态</h2>
+        <div class="stats"><span>算法</span><b id="algoName">冒泡</b></div>
+        <div class="stats"><span>规模</span><b id="sizev">40</b></div>
+        <div class="stats"><span>比较次数</span><b id="cmp">0</b></div>
+        <div class="stats"><span>交换/写入</span><b id="swpv">0</b></div>
+        <div class="stats"><span>进度</span><b id="prog">0%</b></div>
+      </div>
+
+      <div class="card">
+        <h2>确定性种子</h2>
+        <div class="seedline" style="display:flex;gap:6px;">
+          <input id="seed" type="text" placeholder="任意文字/数字" value="晨星">
+        </div>
+        <label>数组规模 <span id="sizeLabel">40</span></label>
+        <input id="size" type="range" min="8" max="120" value="40">
+        <div class="row" style="margin-top:8px;">
+          <button id="applyseed">用种子生成</button>
+        </div>
+        <div class="hint" style="margin-top:6px;">同一种子 + 同规模 = 同一数组。可横向对比各算法效率。</div>
+      </div>
+
+      <div class="card">
+        <h2>内置自检</h2>
+        <div class="self" id="selfcheck">点击「运行自检」验证 6 种算法正确性。</div>
+        <div class="row" style="margin-top:8px;">
+          <button id="selftest">运行自检</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="engine">
+// ===== SortForge engine (pure, headless-extractable) =====
+const Sort = (function(){
+  function seededArray(seedStr, n, maxVal){
+    maxVal = maxVal || 100;
+    let st = 0; const str = String(seedStr);
+    for (let i = 0; i < str.length; i++) st = (st * 31 + str.charCodeAt(i)) >>> 0;
+    st = st || 0x9e3779b9;
+    const rnd = () => { st = (st * 1664525 + 1013904223) >>> 0; return st / 4294967296; };
+    const a = [];
+    for (let i = 0; i < n; i++) a.push(1 + Math.floor(rnd() * maxVal));
+    return a;
+  }
+  function isSorted(a){ for (let i = 1; i < a.length; i++) if (a[i - 1] > a[i]) return false; return true; }
+  function sameElements(x, y){
+    if (x.length !== y.length) return false;
+    const sx = x.slice().sort((p, q) => p - q), sy = y.slice().sort((p, q) => p - q);
+    for (let i = 0; i < x.length; i++) if (sx[i] !== sy[i]) return false;
+    return true;
+  }
+
+  function bubbleSort(src, onStep){
+    const a = src.slice(); let c = 0, s = 0;
+    for (let i = 0; i < a.length - 1; i++){
+      for (let j = 0; j < a.length - 1 - i; j++){
+        c++; if (onStep) onStep({ type: 'compare', a: j, b: j + 1 });
+        if (a[j] > a[j + 1]){
+          const t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; s++;
+          if (onStep) onStep({ type: 'swap', a: j, b: j + 1 });
+        }
+      }
+    }
+    return { array: a, comparisons: c, swaps: s };
+  }
+
+  function insertionSort(src, onStep){
+    const a = src.slice(); let c = 0, s = 0;
+    for (let i = 1; i < a.length; i++){
+      const k = a[i]; let j = i - 1;
+      while (j >= 0){
+        c++; if (onStep) onStep({ type: 'compare', a: j, b: j + 1 });
+        if (a[j] > k){ a[j + 1] = a[j]; s++; if (onStep) onStep({ type: 'write', a: j + 1, val: a[j] }); j--; }
+        else break;
+      }
+      a[j + 1] = k; s++;
+      if (onStep) onStep({ type: 'write', a: j + 1, val: k });
+    }
+    return { array: a, comparisons: c, swaps: s };
+  }
+
+  function selectionSort(src, onStep){
+    const a = src.slice(); let c = 0, s = 0;
+    for (let i = 0; i < a.length - 1; i++){
+      let m = i;
+      for (let j = i + 1; j < a.length; j++){
+        c++; if (onStep) onStep({ type: 'compare', a: m, b: j });
+        if (a[j] < a[m]) m = j;
+      }
+      if (m !== i){ const t = a[i]; a[i] = a[m]; a[m] = t; s++; if (onStep) onStep({ type: 'swap', a: i, b: m }); }
+    }
+    return { array: a, comparisons: c, swaps: s };
+  }
+
+  function quickSort(src, onStep){
+    const a = src.slice(); let c = 0, s = 0;
+    function qs(lo, hi){
+      if (lo >= hi) return;
+      const p = a[hi]; let i = lo;
+      for (let j = lo; j < hi; j++){
+        c++; if (onStep) onStep({ type: 'compare', a: j, b: hi });
+        if (a[j] < p){
+          if (i !== j){ const t = a[i]; a[i] = a[j]; a[j] = t; s++; if (onStep) onStep({ type: 'swap', a: i, b: j }); }
+          i++;
+        }
+      }
+      if (i !== hi){ const t = a[i]; a[i] = a[hi]; a[hi] = t; s++; if (onStep) onStep({ type: 'swap', a: i, b: hi }); }
+      qs(lo, i - 1); qs(i + 1, hi);
+    }
+    qs(0, a.length - 1);
+    return { array: a, comparisons: c, swaps: s };
+  }
+
+  function mergeSort(src, onStep){
+    const a = src.slice(); let c = 0, w = 0;
+    function ms(lo, hi){
+      if (hi - lo < 1) return;
+      const mid = (lo + hi) >> 1;
+      ms(lo, mid); ms(mid + 1, hi);
+      const tmp = []; let i = lo, j = mid + 1;
+      while (i <= mid && j <= hi){
+        c++; if (onStep) onStep({ type: 'compare', a: i, b: j });
+        if (a[i] <= a[j]) tmp.push(a[i++]); else tmp.push(a[j++]);
+      }
+      while (i <= mid) tmp.push(a[i++]);
+      while (j <= hi) tmp.push(a[j++]);
+      for (let k = 0; k < tmp.length; k++){ a[lo + k] = tmp[k]; w++; if (onStep) onStep({ type: 'write', a: lo + k, val: tmp[k] }); }
+    }
+    ms(0, a.length - 1);
+    return { array: a, comparisons: c, swaps: w };
+  }
+
+  function heapSort(src, onStep){
+    const a = src.slice(); let c = 0, s = 0; const n = a.length;
+    function down(i, size){
+      while (true){
+        let l = 2 * i + 1, r = 2 * i + 2, m = i;
+        if (l < size){ c++; if (onStep) onStep({ type: 'compare', a: l, b: m }); if (a[l] > a[m]) m = l; }
+        if (r < size){ c++; if (onStep) onStep({ type: 'compare', a: r, b: m }); if (a[r] > a[m]) m = r; }
+        if (m === i) break;
+        const t = a[i]; a[i] = a[m]; a[m] = t; s++; if (onStep) onStep({ type: 'swap', a: i, b: m });
+        i = m;
+      }
+    }
+    for (let i = n >> 1; i >= 0; i--) down(i, n);
+    for (let e = n - 1; e > 0; e--){
+      const t = a[0]; a[0] = a[e]; a[e] = t; s++; if (onStep) onStep({ type: 'swap', a: 0, b: e });
+      down(0, e);
+    }
+    return { array: a, comparisons: c, swaps: s };
+  }
+
+  const ALGOS = { bubble: bubbleSort, insertion: insertionSort, selection: selectionSort, quick: quickSort, merge: mergeSort, heap: heapSort };
+  const NAMES = { bubble: '冒泡', insertion: '插入', selection: '选择', quick: '快排', merge: '归并', heap: '堆排' };
+  function run(name, arr, onStep){
+    const f = ALGOS[name]; if (!f) throw new Error('unknown algo: ' + name);
+    return f(arr, onStep);
+  }
+  return { seededArray, isSorted, sameElements, run, ALGOS, NAMES,
+    list: Object.keys(ALGOS) };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = Sort;
+</script>
+
+<script>
+// ===== UI =====
+(function(){
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  let algo = 'bubble';
+  let baseArr = [];      // source array
+  let displayArr = [];   // currently shown
+  let steps = [];        // recorded steps
+  let cur = 0;           // step cursor
+  let counts = { comparisons: 0, swaps: 0 };
+  let timer = null, running = false, done = false;
+
+  function draw(hi){
+    hi = hi || {};
+    const n = displayArr.length || 1;
+    const bw = W / n;
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, W, H);
+    const maxV = Math.max.apply(null, displayArr.concat([1]));
+    for (let i = 0; i < n; i++){
+      const h = (displayArr[i] / maxV) * (H - 8);
+      let col = done ? '#3fb950' : '#58a6ff';
+      if (hi[i] === 'cmp') col = '#f2cc60';
+      else if (hi[i] === 'swp') col = '#f85149';
+      ctx.fillStyle = col;
+      ctx.fillRect(i * bw, H - h, Math.max(1, bw - 1), h);
+    }
+  }
+  function applyStep(s){
+    if (s.type === 'swap'){ const t = displayArr[s.a]; displayArr[s.a] = displayArr[s.b]; displayArr[s.b] = t; }
+    else if (s.type === 'write'){ displayArr[s.a] = s.val; }
+  }
+  function buildSteps(){
+    counts = { comparisons: 0, swaps: 0 };
+    const res = Sort.run(algo, baseArr, (s) => {
+      if (s.type === 'compare') counts.comparisons++;
+      else counts.swaps++;
+      steps.push(s);
+    });
+    steps.push({ type: 'done' });
+    counts = { comparisons: res.comparisons, swaps: res.swaps };
+    finalArray = res.array;
+  }
+  let finalArray = [];
+
+  function tick(){
+    if (cur >= steps.length){ finish(); return; }
+    const s = steps[cur];
+    const hi = {};
+    if (s.type === 'compare'){ hi[s.a] = 'cmp'; hi[s.b] = 'cmp'; }
+    else if (s.type === 'swap' || s.type === 'write'){ hi[s.a] = 'swp'; if (s.b != null) hi[s.b] = 'swp'; }
+    applyStep(s);
+    draw(hi);
+    document.getElementById('cmp').textContent = counts.comparisons;
+    document.getElementById('swpv').textContent = counts.swaps;
+    document.getElementById('prog').textContent = Math.round(cur / steps.length * 100) + '%';
+    cur++;
+  }
+  function finish(){
+    running = false; done = true; clearInterval(timer); timer = null;
+    document.getElementById('play').textContent = '▶ 播放';
+    draw();
+    document.getElementById('prog').textContent = '100%';
+  }
+  function stop(){ running = false; clearInterval(timer); timer = null; document.getElementById('play').textContent = '▶ 播放'; }
+
+  function play(){
+    if (done) resetRun();
+    if (running) return;
+    running = true; document.getElementById('play').textContent = '⏸ 暂停';
+    const sp = +document.getElementById('speed').value;
+    timer = setInterval(tick, 1000 / sp);
+  }
+  function resetRun(){
+    stop(); cur = 0; done = false; displayArr = baseArr.slice(); steps = [];
+    counts = { comparisons: 0, swaps: 0 };
+    document.getElementById('cmp').textContent = '0';
+    document.getElementById('swpv').textContent = '0';
+    document.getElementById('prog').textContent = '0%';
+    draw();
+  }
+  function regen(){
+    stop();
+    const n = +document.getElementById('size').value;
+    const seed = document.getElementById('seed').value || '晨星';
+    baseArr = Sort.seededArray(seed, n, 100);
+    displayArr = baseArr.slice(); steps = []; cur = 0; done = false;
+    counts = { comparisons: 0, swaps: 0 };
+    document.getElementById('sizev').textContent = n;
+    document.getElementById('cmp').textContent = '0';
+    document.getElementById('swpv').textContent = '0';
+    document.getElementById('prog').textContent = '0%';
+    draw();
+  }
+
+  document.getElementById('play').onclick = () => running ? stop() : (buildSteps(), play());
+  document.getElementById('step').onclick = () => { stop(); if (done) return; if (!steps.length) buildSteps(); tick(); };
+  document.getElementById('regen').onclick = regen;
+  document.getElementById('reset').onclick = () => { stop(); displayArr = baseArr.slice(); done = false; cur = 0; steps = []; draw();
+    document.getElementById('cmp').textContent = '0'; document.getElementById('swpv').textContent = '0'; document.getElementById('prog').textContent = '0%'; };
+  document.getElementById('applyseed').onclick = regen;
+  document.getElementById('size').oninput = e => { document.getElementById('sizeLabel').textContent = e.target.value; };
+  document.getElementById('speed').oninput = e => { if (running){ stop(); play(); } };
+  document.querySelectorAll('#algos button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#algos button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      algo = b.dataset.a;
+      document.getElementById('algoName').textContent = Sort.NAMES[algo];
+      resetRun();
+    };
+  });
+
+  document.getElementById('selftest').onclick = () => {
+    const out = [];
+    const T = (name, cond) => out.push((cond ? '<span class="ok">✓</span> ' : '<span class="bad">✗</span> ') + name);
+    let total = 0, bad = 0;
+    const cases = [
+      [], [1], [1, 2, 3], [3, 2, 1], [2, 2, 1, 2], [5, 1, 4, 2, 8, 3],
+      [3, 1, 2], [9, 9, 9, 9], [4, 3, 2, 1, 0, -1]
+    ];
+    for (const name of Sort.list){
+      for (const arr of cases){
+        const r = Sort.run(name, arr);
+        total++;
+        let ok = Sort.isSorted(r.array) && Sort.sameElements(r.array, arr);
+        if (!ok) bad++;
+        if (arr.length <= 3) T(name + ' [' + arr.join(',') + ']→[' + r.array.join(',') + ']', ok);
+      }
+      // random determinism + correctness over 50 seeds
+      let allok = true;
+      for (let i = 0; i < 50; i++){
+        const a = Sort.seededArray('self-' + i, 30, 100);
+        const r = Sort.run(name, a);
+        if (!Sort.isSorted(r.array) || !Sort.sameElements(r.array, a)) allok = false;
+      }
+      T(name + ': 50 随机数组全有序且元素一致', allok);
+    }
+    // determinism of seed
+    const d1 = Sort.seededArray('晨星', 40, 100), d2 = Sort.seededArray('晨星', 40, 100);
+    T('种子确定性：同种子同数组', JSON.stringify(d1) === JSON.stringify(d2));
+    const d3 = Sort.seededArray('别的', 40, 100);
+    T('种子区分：异种子异数组', JSON.stringify(d1) !== JSON.stringify(d3));
+    out.push('<br>合计 ' + (total - 8) + ' 算法×边界 + 6×50 随机 + 2 种子 = 全部 ' + (bad === 0 ? '通过' : (bad + ' 失败')));
+    document.getElementById('selfcheck').innerHTML = out.join('<br>');
+  };
+
+  // init
+  document.getElementById('algoName').textContent = Sort.NAMES[algo];
+  regen();
+})();
+</script>
+</body>
+</html>
