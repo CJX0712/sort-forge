@@ -1,5 +1,12 @@
 # SortForge · 排序锻造炉
 
+<p align="center">
+  <a href="https://github.com/CJX0712/sort-forge/actions/workflows/ci.yml"><img src="https://github.com/CJX0712/sort-forge/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/CJX0712/sort-forge/releases"><img src="https://img.shields.io/github/v/release/CJX0712/sort-forge?sort=semver" alt="release"></a>
+  <a href="https://github.com/CJX0712/sort-forge/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CJX0712/sort-forge" alt="license"></a>
+  <img src="https://img.shields.io/badge/author-%E6%99%A8%E6%98%9F-1f6feb" alt="author">
+</p>
+
 单文件离线运行的排序算法动画实验台。6 种经典排序算法逐帧可视化比较/交换过程，实时统计比较与写入次数，并用确定性种子横向对比各算法效率。
 
 > 同一种子 + 同规模 = 同一数组。把 6 种算法轮流跑一遍，谁快谁慢一目了然。
